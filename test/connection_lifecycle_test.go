@@ -6,6 +6,7 @@ package contract_test
 import (
 	"testing"
 
+	"github.com/hongkongkiwi/commandcode2api/internal/cc"
 	"github.com/hongkongkiwi/commandcode2api/test/testutil"
 )
 
@@ -118,8 +119,8 @@ func TestInitPreRequestsAndGenerateHeaders(t *testing.T) {
 		req := mock.NextRequest(t)
 		seenPaths[req.Path] = true
 		if req.Path == "/alpha/generate" {
-			if got := req.Headers.Get("x-command-code-version"); got != "1.53.1" {
-				t.Fatalf("x-command-code-version = %q, want pinned 1.53.1", got)
+			if got := req.Headers.Get("x-command-code-version"); got != cc.CCProtocolVersion {
+				t.Fatalf("x-command-code-version = %q, want pinned %s", got, cc.CCProtocolVersion)
 			}
 			if got := req.Headers.Get("x-cli-environment"); got != "production" {
 				t.Fatalf("x-cli-environment = %q", got)

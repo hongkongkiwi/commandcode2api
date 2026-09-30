@@ -8,9 +8,12 @@ import (
 )
 
 // CCProtocolVersion is the wire protocol version this proxy actually
-// implements (aligned with command-code@1.53.1 source). Newer npm releases
-// only raise a drift warning — never a silent version bump.
-const CCProtocolVersion = "1.53.1"
+// implements. The 1.72.4 dialect was verified against the npm package source
+// (endpoints, headers, envelope keys, toWire* shapes, fingerprint salt, event
+// names all unchanged from 1.53.1; usage details moved under
+// inputTokenDetails.* — handled in events.go). Newer npm releases only raise
+// a drift warning — never a silent version bump.
+const CCProtocolVersion = "1.72.4"
 
 // NewUUID returns a random (v4-shaped) UUID string.
 func NewUUID() string {

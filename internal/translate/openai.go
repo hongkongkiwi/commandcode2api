@@ -110,7 +110,7 @@ func OpenAIUsage(u *cc.CCUsage) *ChatUsage {
 		TotalTokens:      u.InputTokens + u.OutputTokens,
 		PromptTokensDetails: struct {
 			CachedTokens int64 `json:"cached_tokens"`
-		}{CachedTokens: u.CachedInputTokens},
+		}{CachedTokens: u.EffectiveCachedTokens()},
 	}
 }
 
@@ -223,8 +223,8 @@ func (t *ChatTranslator) ParseLine(line string) {
 
 	case "finish-step":
 		t.sawFinish = true
-		if event.FinishReason != "" {
-			t.finishReason = cc.MapFinishReason(event.FinishReason)
+		if fr := cc.EffectiveFinishReason(&event); fr != "" {
+			t.finishReason = cc.MapFinishReason(fr)
 			t.hasFinishReason = true
 		}
 		if event.Usage != nil {
@@ -236,12 +236,12 @@ func (t *ChatTranslator) ParseLine(line string) {
 
 	case "finish":
 		t.sawFinish = true
-		fr := t.finishReason
 		if !t.hasFinishReason || t.finishReason == "" {
-			fr = cc.MapFinishReason(event.FinishReason)
+			fr := cc.MapFinishReason(cc.EffectiveFinishReason(&event))
 			if fr == "" {
 				fr = cc.MapFinishReason("stop")
 			}
+			t.finishReason = fr
 		}
 		u := event.TotalUsage
 		if u == nil {
@@ -253,8 +253,8 @@ func (t *ChatTranslator) ParseLine(line string) {
 		cc.NormalizeUsage(u)
 		t.InputTokens = u.InputTokens
 		t.OutputTokens = u.OutputTokens
-		t.CachedInputTokens = u.CachedInputTokens
-		final := fr
+		t.CachedInputTokens = u.EffectiveCachedTokens()
+		final := t.finishReason
 		t.makeChunk(ChatDelta{}, &final, OpenAIUsage(u))
 
 	case "error":
@@ -270,7 +270,7 @@ func (t *ChatTranslator) ParseLine(line string) {
 		// downstream agent loops don't stop at a premature finish_reason.
 
 	case "reasoning-end", "provider-metadata", "tool-input-start", "tool-input-delta",
-		"tool-input-end", "tool-error", "text-end":
+		"tool-input-end", "tool-error", "text-end", "cache-write-tokens":
 		// silent
 
 	default:
@@ -353,7 +353,7 @@ func (a *ChatAggregate) ProcessLine(line string) {
 	case "finish-step", "finish":
 		a.LastCcEvent = event.Type
 		a.SawFinish = true
-		a.FinishReason = cc.MapFinishReason(event.FinishReason)
+		a.FinishReason = cc.MapFinishReason(cc.EffectiveFinishReason(&event))
 		if event.TotalUsage != nil {
 			a.Usage = event.TotalUsage
 		}
@@ -370,7 +370,7 @@ func (a *ChatAggregate) ProcessLine(line string) {
 	case "text-start", "text-end", "start", "start-step",
 		"reasoning-start", "reasoning-end",
 		"provider-metadata", "tool-input-start", "tool-input-delta", "tool-input-end",
-		"tool-error":
+		"tool-error", "cache-write-tokens":
 		// silent — same list as the streaming translator
 	default:
 		logx.Warn("Unknown CC event type", map[string]any{"type": event.Type})

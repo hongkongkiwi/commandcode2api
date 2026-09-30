@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hongkongkiwi/commandcode2api/internal/logx"
@@ -35,7 +36,8 @@ type Client struct {
 	version     string
 	lastDriftAt time.Time
 
-	proxyURL *url.URL // nil = direct
+	proxyURL   *url.URL // nil = direct
+	modelsGone atomic.Bool
 }
 
 func NewClient(base, upstreamProxy, fingerprintSalt string, device DeviceProfile, states *KeyStates, zdr bool, cliSessionMode string) (*Client, error) {
@@ -88,6 +90,9 @@ func NewClient(base, upstreamProxy, fingerprintSalt string, device DeviceProfile
 // not the proxy URL.
 
 func (c *Client) Fingerprinter() *Fingerprinter { return c.fingerprinter }
+
+// ModelsGone reports whether the provider models endpoint was 404-latched.
+func (c *Client) ModelsGone() bool { return c.modelsGone.Load() }
 
 func (c *Client) SetSalt(salt string) { c.fingerprinter.salt = salt }
 
@@ -269,7 +274,9 @@ func MarshalEnvelope(env *Envelope) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// FetchModels pulls the provider model catalog; 10s timeout.
+// FetchModels pulls the provider model catalog; 10s timeout. Returns
+// (nil, false) on any failure; a 404 additionally latches c.modelsGone so
+// callers can stop retrying (endpoint removed in CLI 1.7x).
 func (c *Client) FetchModels(ctx context.Context, apiKey string) ([]map[string]string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -290,7 +297,12 @@ func (c *Client) FetchModels(ctx context.Context, apiKey string) ([]map[string]s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		logx.Warn("Provider models fetch failed, using hardcoded list", map[string]any{"status": resp.StatusCode})
+		if resp.StatusCode == http.StatusNotFound {
+			c.modelsGone.Store(true)
+			logx.Info("Provider models endpoint gone (CLI 1.7x removed it); using static catalog", nil)
+		} else {
+			logx.Warn("Provider models fetch failed, using hardcoded list", map[string]any{"status": resp.StatusCode})
+		}
 		return nil, false
 	}
 	var parsed struct {

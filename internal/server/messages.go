@@ -204,7 +204,7 @@ func (d *Deps) nonStreamMessages(w http.ResponseWriter, r *http.Request, resp *h
 			})
 		case "finish-step", "finish":
 			sawFinish = true
-			finishReason = cc.MapFinishReason(event.FinishReason)
+			finishReason = cc.MapFinishReason(cc.EffectiveFinishReason(&event))
 			if event.TotalUsage != nil {
 				usage = event.TotalUsage
 			} else if event.Usage != nil {
@@ -215,7 +215,7 @@ func (d *Deps) nonStreamMessages(w http.ResponseWriter, r *http.Request, resp *h
 		case "text-start", "text-end", "start", "start-step",
 			"reasoning-start", "reasoning-end",
 			"provider-metadata", "tool-input-start", "tool-input-delta", "tool-input-end",
-			"tool-error":
+			"tool-error", "cache-write-tokens":
 			// silent
 		default:
 			logx.Warn("Unknown CC event type", map[string]any{"type": event.Type})

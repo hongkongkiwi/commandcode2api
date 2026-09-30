@@ -30,6 +30,29 @@ drift, find the behavior here first, then update the Go file listed.
 | `fetchModels` / `MODELS` | `internal/server/models.go` |
 | `handleModels`, server, CORS, inflight | `internal/server/models_handler.go`, `mux.go` |
 
+## 1.72.4 drift verification (2026-09-30)
+
+Diffed against `command-code@1.72.4` npm package source (`dist/cli.mjs`):
+
+**Unchanged** (port remains valid): `/alpha/generate`, `/alpha/fingerprint/record`,
+`/alpha/lifecycle-events`; all auth headers; envelope keys (`permissionMode`,
+`threadId`, `promptCache`), `toWire*` shapes, 64000 default; fingerprint root salt
+`command-code:device-fingerprint:v1`; core event names (`text-delta`,
+`reasoning-delta`, `tool-call`, `finish`, `error`, `provider-metadata`); quota
+endpoints for pool probes (`/alpha/whoami`, `/alpha/billing/credits`,
+`/alpha/billing/subscriptions`, `/alpha/usage/summary`).
+
+**Changed, handled**:
+1. Usage details: `cachedInputTokens`/`noCacheTokens` (top-level, 1.53.x) →
+   `inputTokenDetails.cacheReadTokens`/`cacheWriteTokens`. Go: `CCUsage.EffectiveCachedTokens()`
+   reads both shapes; `NoCacheTokens` is `*int64` (absent ≠ 0).
+2. `rawFinishReason` takes precedence over `finishReason` — `cc.EffectiveFinishReason`.
+3. New silent event type `cache-write-tokens` added to all translator silent lists.
+4. `CCProtocolVersion` pinned → `1.72.4` (drift check in sync as of this date).
+5. Model catalog: CLI no longer calls `/provider/v1/models` but the server
+   endpoint still works (86 live models observed); static fallback refreshed to
+   the 1.72.4 built-in catalog; a 404 latches `ModelsGone` and stops retrying.
+
 ## Known deviations (deliberate)
 
 1. **Memory**: request body is read once into one buffer and re-marshaled once

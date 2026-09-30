@@ -9,18 +9,19 @@ import (
 // CCEvent is one line of the upstream NDJSON event stream from
 // POST /alpha/generate. Fields are shared across event types; Type selects.
 type CCEvent struct {
-	Type         string          `json:"type"`
-	Text         string          `json:"text"`
-	Delta        string          `json:"delta"`
-	ToolCallID   string          `json:"toolCallId"`
-	ToolName     string          `json:"toolName"`
-	Input        json.RawMessage `json:"input"`
-	FinishReason string          `json:"finishReason"`
-	Usage        *CCUsage        `json:"usage"`
-	TotalUsage   *CCUsage        `json:"totalUsage"`
-	Error        *CCEventError   `json:"error"`
-	Message      string          `json:"message"`
-	Code         string          `json:"code"`
+	Type            string          `json:"type"`
+	Text            string          `json:"text"`
+	Delta           string          `json:"delta"`
+	RawFinishReason string          `json:"rawFinishReason"` // 1.72.4: provider-raw reason, takes precedence
+	ToolCallID      string          `json:"toolCallId"`
+	ToolName        string          `json:"toolName"`
+	Input           json.RawMessage `json:"input"`
+	FinishReason    string          `json:"finishReason"`
+	Usage           *CCUsage        `json:"usage"`
+	TotalUsage      *CCUsage        `json:"totalUsage"`
+	Error           *CCEventError   `json:"error"`
+	Message         string          `json:"message"`
+	Code            string          `json:"code"`
 }
 
 type CCEventError struct {
@@ -38,9 +39,9 @@ type CCUsage struct {
 }
 
 type CCInputTokenDetails struct {
-	CacheReadTokens  int64 `json:"cacheReadTokens"`
-	CacheWriteTokens int64 `json:"cacheWriteTokens"`
-	NoCacheTokens    int64 `json:"noCacheTokens"`
+	CacheReadTokens  int64  `json:"cacheReadTokens"`
+	CacheWriteTokens int64  `json:"cacheWriteTokens"`
+	NoCacheTokens    *int64 `json:"noCacheTokens"` // pointer: absent ≠ 0 (1.53.x sent it, 1.72.4 doesn't)
 }
 
 // TextOf mirrors event.text || event.delta || ”.
@@ -90,17 +91,11 @@ func AnthropicInputTokens(u *CCUsage, noCacheOverride int64) int64 {
 	if noCacheOverride >= 0 {
 		return noCacheOverride
 	}
-	if u.InputTokenDetails != nil && u.InputTokenDetails.NoCacheTokens >= 0 {
-		return u.InputTokenDetails.NoCacheTokens
+	if u.InputTokenDetails != nil && u.InputTokenDetails.NoCacheTokens != nil && *u.InputTokenDetails.NoCacheTokens >= 0 {
+		return *u.InputTokenDetails.NoCacheTokens
 	}
-	cacheRead := u.CachedInputTokens
-	if u.InputTokenDetails != nil && u.InputTokenDetails.CacheReadTokens > 0 {
-		cacheRead = u.InputTokenDetails.CacheReadTokens
-	}
-	cacheWrite := int64(0)
-	if u.InputTokenDetails != nil {
-		cacheWrite = u.InputTokenDetails.CacheWriteTokens
-	}
+	cacheRead := u.EffectiveCachedTokens()
+	cacheWrite := u.EffectiveCacheWriteTokens()
 	n := u.InputTokens - cacheRead - cacheWrite
 	if n < 0 {
 		return 0
@@ -133,6 +128,38 @@ func MapFinishReason(reason string) string {
 		return "upstream_error"
 	}
 	return r
+}
+
+// EffectiveFinishReason mirrors the 1.72.4 CLI: rawFinishReason ?? finishReason.
+func EffectiveFinishReason(e *CCEvent) string {
+	if e.RawFinishReason != "" {
+		return e.RawFinishReason
+	}
+	return e.FinishReason
+}
+
+// EffectiveCachedTokens reads cache-read tokens in either wire shape:
+// top-level cachedInputTokens (≤1.53.1) or inputTokenDetails.cacheReadTokens
+// (1.72.4+).
+func (u *CCUsage) EffectiveCachedTokens() int64 {
+	if u == nil {
+		return 0
+	}
+	if u.CachedInputTokens > 0 {
+		return u.CachedInputTokens
+	}
+	if u.InputTokenDetails != nil {
+		return u.InputTokenDetails.CacheReadTokens
+	}
+	return 0
+}
+
+// EffectiveCacheWriteTokens likewise for cache-write tokens.
+func (u *CCUsage) EffectiveCacheWriteTokens() int64 {
+	if u == nil || u.InputTokenDetails == nil {
+		return 0
+	}
+	return u.InputTokenDetails.CacheWriteTokens
 }
 
 // IncompleteDetail explains why an upstream stream did not finish normally;

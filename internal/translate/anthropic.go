@@ -566,8 +566,8 @@ func (t *AnthropicTranslator) ParseLine(line string) {
 
 	case "finish-step", "finish":
 		t.sawFinish = true
-		if event.FinishReason != "" {
-			t.finishNorm = cc.MapFinishReason(event.FinishReason)
+		if fr := cc.EffectiveFinishReason(&event); fr != "" {
+			t.finishNorm = cc.MapFinishReason(fr)
 			t.stopReason = MapAnthropicStopReason(t.finishNorm)
 		}
 		u := event.TotalUsage
@@ -578,12 +578,10 @@ func (t *AnthropicTranslator) ParseLine(line string) {
 			cc.NormalizeUsage(u)
 			t.InputTokens = u.InputTokens
 			t.OutputTokens = u.OutputTokens
-			t.CachedInputTokens = u.CachedInputTokens
-			if u.InputTokenDetails != nil {
-				t.CacheWriteTokens = u.InputTokenDetails.CacheWriteTokens
-				if u.InputTokenDetails.NoCacheTokens > 0 {
-					t.NoCacheTokens = u.InputTokenDetails.NoCacheTokens
-				}
+			t.CachedInputTokens = u.EffectiveCachedTokens()
+			t.CacheWriteTokens = u.EffectiveCacheWriteTokens()
+			if u.InputTokenDetails != nil && u.InputTokenDetails.NoCacheTokens != nil && *u.InputTokenDetails.NoCacheTokens > 0 {
+				t.NoCacheTokens = *u.InputTokenDetails.NoCacheTokens
 			}
 		}
 		// Local delta-based estimate retained when upstream omits usage —
@@ -600,7 +598,7 @@ func (t *AnthropicTranslator) ParseLine(line string) {
 		})
 
 	case "reasoning-end", "provider-metadata", "tool-input-start", "tool-input-delta",
-		"tool-input-end", "tool-error", "text-end":
+		"tool-input-end", "tool-error", "text-end", "cache-write-tokens":
 		// silent
 
 	default:
@@ -712,10 +710,8 @@ func BuildAnthropicResponse(model, fullText string, toolCalls []ChatTool, finish
 	cacheWrite := int64(0)
 	cacheRead := int64(0)
 	if usage != nil {
-		cacheRead = usage.CachedInputTokens
-		if usage.InputTokenDetails != nil {
-			cacheWrite = usage.InputTokenDetails.CacheWriteTokens
-		}
+		cacheRead = usage.EffectiveCachedTokens()
+		cacheWrite = usage.EffectiveCacheWriteTokens()
 	}
 	return map[string]any{
 		"id":            "msg_" + cc.NewUUID()[:12],

@@ -220,8 +220,8 @@ func (t *ResponsesTranslator) ParseLine(line string) {
 
 	case "finish":
 		t.sawFinish = true
-		if event.FinishReason != "" {
-			t.finishReason = cc.MapFinishReason(event.FinishReason)
+		if fr := cc.EffectiveFinishReason(&event); fr != "" {
+			t.finishReason = cc.MapFinishReason(fr)
 		}
 		u := event.TotalUsage
 		if u == nil {
@@ -231,7 +231,7 @@ func (t *ResponsesTranslator) ParseLine(line string) {
 			cc.NormalizeUsage(u)
 			t.InputTokens = u.InputTokens
 			t.OutputTokens = u.OutputTokens
-			t.CachedInputTokens = u.CachedInputTokens
+			t.CachedInputTokens = u.EffectiveCachedTokens()
 		}
 
 	case "error":
@@ -323,14 +323,11 @@ func BuildResponsesUsage(u *cc.CCUsage, fallbackOutputTokens int64) map[string]a
 	if outTok == 0 {
 		outTok = fallbackOutputTokens
 	}
-	cacheWrite := int64(0)
-	if u.InputTokenDetails != nil {
-		cacheWrite = u.InputTokenDetails.CacheWriteTokens
-	}
+	cacheWrite := u.EffectiveCacheWriteTokens()
 	return map[string]any{
 		"input_tokens": inTok,
 		"input_tokens_details": map[string]any{
-			"cached_tokens": u.CachedInputTokens, "cache_write_tokens": cacheWrite,
+			"cached_tokens": u.EffectiveCachedTokens(), "cache_write_tokens": cacheWrite,
 		},
 		"output_tokens":         outTok,
 		"output_tokens_details": map[string]any{"reasoning_tokens": 0},
