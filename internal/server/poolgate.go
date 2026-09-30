@@ -41,6 +41,11 @@ func (a *atomicInt64) Store(v int64) { a.mu.Lock(); a.val = v; a.mu.Unlock() }
 func (a *atomicInt64) Load() int64   { a.mu.Lock(); defer a.mu.Unlock(); return a.val }
 
 func (pg *PoolGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Liveness probes are always unauthenticated (reference behavior).
+	if r.URL.Path == "/health" || r.URL.Path == "/" {
+		pg.Next.ServeHTTP(w, r)
+		return
+	}
 	resolved := pg.Resolver.Resolve(r.Header)
 	switch resolved.Mode {
 	case pool.ModeNone:
