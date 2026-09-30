@@ -1,0 +1,18 @@
+{
+  "port": 3050,
+  "host": "0.0.0.0",
+  "apiBase": "https://api.commandcode.ai",
+  "apiKey": "",
+  "projectSlug": "cc-proxy",
+  "logFile": "",
+  "logLevel": "info",
+  "useProviderModels": true,
+  "modelRefreshIntervalMs": 300000,
+  "zdr": false,
+  "cliMode": "agent",
+  "cliSessionMode": "interactive",
+  "fingerprintSalt": "",
+  "deviceProjectDir": "",
+  "emptySystemPlaceholder": true,
+  "upstreamProxy": ""
+}

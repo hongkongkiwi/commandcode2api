@@ -1,0 +1,24 @@
+services:
+  commandcode2api:
+    build: .
+    image: ghcr.io/hongkongkiwi/commandcode2api:latest
+    container_name: cc2api
+    restart: unless-stopped
+    ports:
+      - "${PROXY_PORT:-3050}:3050"
+    environment:
+      # Pass-through auth works with zero config (client sends its user_ key).
+      # Pool mode: mount a state dir + set a vault secret + admin token.
+      - CC_VAULT_SECRET=${CC_VAULT_SECRET:-}
+      - CC_ADMIN_TOKEN=${CC_ADMIN_TOKEN:-}
+      - CC_POOL_ONLY=${CC_POOL_ONLY:-0}
+      - CC_MAX_INFLIGHT=${CC_MAX_INFLIGHT:-0}
+      - CC_UPSTREAM_PROXY=${CC_UPSTREAM_PROXY:-}
+    volumes:
+      - ./data:/app/data
+      - ./config.json:/app/config.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3050/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
