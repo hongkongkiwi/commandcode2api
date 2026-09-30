@@ -1,0 +1,71 @@
+{
+ "user_test": {
+  "thumbmark": "0e3f1136fc2fd0f9890be9b7ee921c974564a35f7c250709ed2e479e4d77c40c",
+  "machineIdHash": "b0d4be6b9462b85eaf01b5be6ed01a8fda7518f06bc53ca6ade2124920bbe8fe",
+  "macHashes": [
+   "85e4cfa868d49942290118fb8fc014c1466c28107bc1cfa4f2e2ae7dc4b149d3",
+   "ea6f50f8657df923ccfedfcea9fd48acac6ad4c19d84123a6a1d79b9d332421e",
+   "7ff3602e10d9b4030fb6bd6ed6c386294a742410f7de958d328da51c9d302bbe",
+   "fb27abec64977a82255920cdb8d8e557b530870c490f2a9c85588df63481bb92",
+   "6bf824cfdd5ad50bf3008153506a1d25846f652ffd51c6669a57950fdc153990"
+  ],
+  "osUserHash": "bebef7087bbf7f2e551951a1cda04313c1286bc1f2a855427ce3b2cb5e89e150",
+  "hostnameHash": "666b837f7d6dd064c3109e102e4aa0bacf49a965da0765cb2bc9ab28625f9095",
+  "gitEmailHash": "68803b2b6f9908342abda89fce8371e6912fe879b34d075f346b9552b91ab1e7",
+  "cpuModel": "AMD Ryzen 5 7600",
+  "cpuCount": 6,
+  "memGiB": 24,
+  "timezone": "Australia/Sydney"
+ },
+ "user_abc123": {
+  "thumbmark": "d5b0d96379eca5b2a88895049917e0bb6ba0f13a22a84c5f905ed902b1464e5b",
+  "machineIdHash": "b160ea3693a7fd038e7473b9d2c25862f79bff9703adf8c983fee888ec98bf82",
+  "macHashes": [
+   "df479bebe2a8bd48aed8ae1ca6833431d45b91def54dc246c965203715247570",
+   "97fbc1c3189c17e9787093bd706d536631f7c5c4c79eca90d77ff3bdc335fe9c",
+   "fd4a42048c14c7701480162bb41e3515deda42ce3c8820047c168472320b3353"
+  ],
+  "osUserHash": "06414579e1354d2814990a25ee0523d4cc1fab56fe9218004b1d8d5f3e4bf68c",
+  "hostnameHash": "180354140e6b8ce084455ad02bce747946ea82bcdfd6e71073effdab1049dfaf",
+  "gitEmailHash": "7432dd1d680d595c98494c93ca5cd723dcfd94bbdae24bfd672edcbb1d21f4ab",
+  "cpuModel": "12th Gen Intel(R) Core(TM) i7-12650H",
+  "cpuCount": 10,
+  "memGiB": 24,
+  "timezone": "Europe/London"
+ },
+ "user_XYZ-789_q": {
+  "thumbmark": "ec4705946a939cc75e06ba8716420bafb61c9bef240ab0bad75f05147cc04eea",
+  "machineIdHash": "1288cb9844e03af6503d362af7ec6b9c934089ff666d5394dc710118bcac49a2",
+  "macHashes": [
+   "2104966f958dd52610927dc547a3febbc3c1690cffb4ef51b2e10b1ff025a84b",
+   "01b4d619f3c1334bbb9d558f8dc78ce089c7eee17656c22c4f6bc1ac6e10b917",
+   "baab5381c1ad488603f003660a3552aaf8af15b3dbad44c0a2fd1d5dbfe9beb3",
+   "f1b645f1396a5191cc569dff3b2c1428609f0a1a2e73e702fc49d0cb8478acc6"
+  ],
+  "osUserHash": "c5dc86122c5ebb552f2e851bf8d77ee5c827e35a36d209c80261473a4ae7d16a",
+  "hostnameHash": "7fe07dae0bffa0db5a2c4f1d5f95570f525f5eee9104108987db701d275e9340",
+  "gitEmailHash": "3c5a47b14a83d81124460227a5f7759e99609f27fe70762eb9c341b19a384766",
+  "cpuModel": "AMD Ryzen 9 7900X",
+  "cpuCount": 12,
+  "memGiB": 64,
+  "timezone": "Asia/Tokyo"
+ },
+ "rot||user_test": {
+  "thumbmark": "c804a2456ebd812b95f78b693b784805c7501450ad2b1ed696d2342e761ed365",
+  "machineIdHash": "a0bcce9339b46688c029bf1f5b3dee1083b5bb2bebc85888a1b0dca354c65db9",
+  "macHashes": [
+   "33c174c939a804d2549fad6aadee33ed1cbb5d6e26b73b6727ea6bffadfeb97a",
+   "b78a3dbf6ff9f33a2d28f3d592e77ec4674a097e88c77466b5444d49da11350f",
+   "8201e5a8e0a3c4ec32745554d496d9fc865ff4ff1a5eb70991728b2dc215d4db",
+   "70f8c55ecd7974b48cc5a30d58d1d8115e1afa8b688f5c386e3ceaaf486ac8a2",
+   "3b63e725cc4958581025a6bbd23adf04d16e749dceba7446418cfe88d5eb9bb6"
+  ],
+  "osUserHash": "c5dc86122c5ebb552f2e851bf8d77ee5c827e35a36d209c80261473a4ae7d16a",
+  "hostnameHash": "a7057d0e03cb1b4e1ef9bb0bde1af00458c65636efa10c55a13f9d390b07e3b0",
+  "gitEmailHash": "10659efccd86ec3e71f6222c11afcf534c28ff367ab0a05e6d0b90b379ec4799",
+  "cpuModel": "12th Gen Intel(R) Core(TM) i5-12400F",
+  "cpuCount": 6,
+  "memGiB": 24,
+  "timezone": "Asia/Singapore"
+ }
+}

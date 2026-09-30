@@ -1,0 +1,16 @@
+# Binaries
+/bin/
+*.exe
+
+# Local state (key pool DB, logs)
+/data/
+*.log
+
+# Env / secrets
+.env
+
+# Tooling
+.zcode/
+
+# Vendored reference source (porting spec, not part of the build)
+/refs/
