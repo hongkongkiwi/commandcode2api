@@ -116,7 +116,7 @@ func TestEmptySystemPlaceholder(t *testing.T) {
 
 func TestToolNameAliasesAndShape(t *testing.T) {
 	req := &ir.ChatRequest{
-		Model: "m",
+		Model:    "m",
 		Messages: []ir.Message{{Role: "user", Content: ir.StringContent("hi")}},
 		Tools: []ir.Tool{
 			{Type: "function", Function: &ir.FunctionDef{Name: "bash_output", Description: "d", Parameters: json.RawMessage(`{"type":"object"}`)}},

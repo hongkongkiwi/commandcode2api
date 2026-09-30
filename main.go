@@ -17,14 +17,16 @@ import (
 	"github.com/hongkongkiwi/commandcode2api/internal/cc"
 	"github.com/hongkongkiwi/commandcode2api/internal/config"
 	"github.com/hongkongkiwi/commandcode2api/internal/logx"
+	"github.com/hongkongkiwi/commandcode2api/internal/pool"
 	"github.com/hongkongkiwi/commandcode2api/internal/server"
+	"github.com/hongkongkiwi/commandcode2api/internal/store"
 )
 
 var version = "0.1.0-dev"
 
 func main() {
 	cfgPath := flag.String("config", "", "path to config.json")
-	_ = flag.String("state-dir", "", "state directory (key pool DB; reserved for P3)")
+	stateDir := flag.String("state-dir", "", "state directory (enables the key pool: <dir>/pool.db)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -69,11 +71,52 @@ func main() {
 		Cfg:    cfg,
 	}
 
+	handler := server.NewMux(deps, server.NewInflight(config.MaxInflight()))
+
+	// Key pool: enabled by -state-dir (or CC_STATE_DIR). Pass-through auth
+	// stays on unless CC_POOL_ONLY=1. Admin API behind CC_ADMIN_TOKEN.
+	if sd := *stateDir; sd != "" || os.Getenv("CC_STATE_DIR") != "" {
+		dir := sd
+		if dir == "" {
+			dir = os.Getenv("CC_STATE_DIR")
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			logx.Error("Cannot create state dir", map[string]any{"dir": dir, "error": err.Error()})
+			os.Exit(1)
+		}
+		st, err := store.Open(dir+"/pool.db", os.Getenv("CC_VAULT_SECRET"))
+		if err != nil {
+			logx.Error("Cannot open pool DB", map[string]any{"error": err.Error()})
+			os.Exit(1)
+		}
+		defer st.Close()
+		if os.Getenv("CC_VAULT_SECRET") == "" {
+			logx.Warn("CC_VAULT_SECRET unset: pooled CC keys stored WITHOUT encryption at rest", nil)
+		}
+		p := pool.New(st)
+		if err := p.Reload(); err != nil {
+			logx.Error("Cannot load pool keys", map[string]any{"error": err.Error()})
+			os.Exit(1)
+		}
+		deps.Pool = p
+		deps.Store = st
+		resolver := &pool.Resolver{Store: st, Pool: p, PassEnabled: os.Getenv("CC_POOL_ONLY") != "1"}
+		handler = &server.PoolGate{Resolver: resolver, Next: handler}
+		admin := &server.AdminREST{Store: st, Pool: p, Token: os.Getenv("CC_ADMIN_TOKEN")}
+		mux := http.NewServeMux()
+		mux.Handle("/admin/", admin)
+		mux.Handle("/", handler)
+		handler = mux
+		logx.Info("Key pool enabled", map[string]any{
+			"db": dir + "/pool.db", "keys": p.Size(),
+			"passThrough": os.Getenv("CC_POOL_ONLY") != "1",
+			"adminApi":    os.Getenv("CC_ADMIN_TOKEN") != "",
+		})
+	}
+
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	client.StartDriftCheck(rootCtx)
-
-	handler := server.NewMux(deps, server.NewInflight(config.MaxInflight()))
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),

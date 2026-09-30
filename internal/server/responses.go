@@ -37,8 +37,8 @@ func (d *Deps) HandleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := ExtractAPIKey(r.Header)
-	if apiKey == "" {
+	apiKey, authed := d.downstreamKey(r)
+	if !authed {
 		writeResponsesError(w, 401, "authentication_error",
 			"Missing API key. Send in Authorization: Bearer <key> or x-api-key header", 0)
 		return
@@ -133,6 +133,10 @@ func (d *Deps) streamResponses(w http.ResponseWriter, r *http.Request, resp *htt
 		return
 	}
 	resetTimeouts()
+	defer func() {
+		d.recordUsage(usageFrom(r.Context()), upstreamKeyID(r.Context()), model, "/v1/responses",
+			200, tr.InputTokens, tr.OutputTokens, tr.CachedInputTokens, time.Since(start).Milliseconds())
+	}()
 
 	if tr.UpstreamError != nil {
 		if !started {
@@ -218,6 +222,15 @@ func (d *Deps) nonStreamResponses(w http.ResponseWriter, r *http.Request, resp *
 		}
 	}
 	resetTimeouts()
+	pTokens, cTokens, cachedTokens := int64(0), int64(0), int64(0)
+	if usage != nil {
+		cc.NormalizeUsage(usage)
+		pTokens, cTokens, cachedTokens = usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens
+	}
+	defer func() {
+		d.recordUsage(usageFrom(r.Context()), upstreamKeyID(r.Context()), model, "/v1/responses",
+			200, pTokens, cTokens, cachedTokens, time.Since(start).Milliseconds())
+	}()
 
 	if upstreamError != nil {
 		writeResponsesError(w, upstreamError.Status, upstreamError.Body.Error.Type,

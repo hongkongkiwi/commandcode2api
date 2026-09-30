@@ -70,10 +70,25 @@ func readBody(r *http.Request, maxBytes int64) (json.RawMessage, *RequestError) 
 	return json.RawMessage(buf), nil
 }
 
-// RequestError carries a pre-rendered error response through handlers.
+// RequestError carries a pre-rendered error response through handlers,
+// plus the raw upstream classification for pool failover decisions.
 type RequestError struct {
 	Status int
 	Body   map[string]any
+	// Upstream classification (0/"" when not upstream-derived).
+	UpstreamStatus int
+	UpstreamCode   string
+	RetryAfter     int
+}
+
+// Error implements error so errClientGone can be tested with ==.
+func (e *RequestError) Error() string {
+	if m, ok := e.Body["error"].(map[string]any); ok {
+		if msg, ok := m["message"].(string); ok {
+			return msg
+		}
+	}
+	return "request error"
 }
 
 func itoa(n int) string {

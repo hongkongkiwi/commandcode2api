@@ -11,6 +11,8 @@ import (
 	"github.com/hongkongkiwi/commandcode2api/internal/config"
 	"github.com/hongkongkiwi/commandcode2api/internal/ir"
 	"github.com/hongkongkiwi/commandcode2api/internal/logx"
+	"github.com/hongkongkiwi/commandcode2api/internal/pool"
+	"github.com/hongkongkiwi/commandcode2api/internal/store"
 	"github.com/hongkongkiwi/commandcode2api/internal/translate"
 )
 
@@ -20,6 +22,9 @@ type Deps struct {
 	States *cc.KeyStates
 	Models *Models
 	Cfg    *config.Config
+	// Pool infrastructure — nil in pure pass-through deployments.
+	Pool  *pool.Pool
+	Store *store.Store
 }
 
 // SSEHeaders are written once real content (or an explicit start) arrives.
@@ -65,7 +70,83 @@ func parseIR(raw json.RawMessage) (*ir.ChatRequest, *RequestError) {
 
 // forwardOnce performs ensureInitialized + Generate for an IR request and
 // returns the upstream response (status < 300) or a rendered error.
+//
+// In pool mode (poolDecision in ctx) the Authorization header is substituted
+// with a pooled key, with pre-content failover to the next key on
+// rate-limit/exhaustion/invalid classifications. Failover is safe here
+// because no response bytes have been written yet.
 func (d *Deps) forwardOnce(ctx context.Context, req *ir.ChatRequest, apiKey string, headers http.Header) (*http.Response, *RequestError) {
+	if model := req.Model; model != "" {
+		if dec := decisionFrom(ctx); dec != nil && dec.resolved.Gateway != nil {
+			if !modelWhitelisted(dec.resolved.Gateway.ModelWhitelist, model) {
+				return nil, &RequestError{Status: 403, Body: errPayload("Model not allowed for this gateway key", "permission_error")}
+			}
+		}
+	}
+
+	var poolPool *pool.Pool
+	var decision *poolDecision
+	if decision = decisionFrom(ctx); decision != nil {
+		poolPool = d.Pool
+	}
+
+	excluded := map[int64]bool{}
+	for attempt := 0; attempt < 3; attempt++ {
+		upstreamKey := apiKey
+		var keyID int64
+		if poolPool != nil {
+			key := poolPool.Select(poolAffinityKey(decision, headers), excluded)
+			if key == nil {
+				return nil, &RequestError{Status: 503, Body: errPayload("No available key in the pool (all cooling/exhausted/invalid)", "server_busy")}
+			}
+			upstreamKey = key.PlainKey
+			keyID = key.ID
+		}
+
+		if decision != nil && decision.keyIDHolder != nil {
+			decision.keyIDHolder.Store(keyID)
+		}
+		resp, rerr := d.generateOnce(ctx, req, upstreamKey, headers)
+		if rerr == nil {
+			if poolPool != nil {
+				poolPool.ReportSuccess(keyID)
+			}
+			return resp, nil
+		}
+		if rerr == errClientGone {
+			return nil, nil
+		}
+		// Fail over only on classifiable upstream failures with retries left.
+		class := pool.Classify(rerr.UpstreamStatus, rerr.UpstreamCode)
+		if poolPool != nil && class != "none" && attempt < 2 {
+			switch class {
+			case "invalid":
+				poolPool.ReportInvalid(keyID)
+			case "exhausted":
+				poolPool.ReportExhausted(keyID)
+			case "rate_limit":
+				poolPool.ReportRateLimit(keyID, rerr.RetryAfter)
+			}
+			excluded[keyID] = true
+			continue
+		}
+		return nil, rerr
+	}
+	return nil, &RequestError{Status: 503, Body: errPayload("No available key in the pool", "server_busy")}
+}
+
+func poolAffinityKey(decision *poolDecision, headers http.Header) string {
+	if decision == nil || decision.resolved.Gateway == nil {
+		return ""
+	}
+	return pool.StickySessionKey(headerMap(headers), "gw:"+itoa(int(decision.resolved.Gateway.ID)))
+}
+
+// errClientGone signals the downstream client vanished (nothing to send).
+var errClientGone = &RequestError{}
+
+// generateOnce is one raw attempt: init + envelope + POST + status check.
+func (d *Deps) generateOnce(ctx context.Context, req *ir.ChatRequest, apiKey string, headers http.Header) (*http.Response, *RequestError) {
 	promptCacheKey := req.PromptCacheKey
 	sessionID := cc.SessionIDFromHeaders(headerMap(headers), apiKey, promptCacheKey, d.States.SessionID)
 
@@ -80,7 +161,7 @@ func (d *Deps) forwardOnce(ctx context.Context, req *ir.ChatRequest, apiKey stri
 	resp, err := d.Client.Generate(ctx, env, apiKey, sessionID, headers.Get("X-Cmd-Zdr") == "1")
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, nil // client went away; nothing to send
+			return nil, errClientGone // client went away; nothing to send
 		}
 		logx.Error("Upstream error", map[string]any{"message": err.Error()})
 		return nil, &RequestError{Status: 502, Body: errPayload("Upstream error: "+err.Error(), "proxy_error")}
@@ -93,7 +174,13 @@ func (d *Deps) forwardOnce(ctx context.Context, req *ir.ChatRequest, apiKey stri
 			"status": resp.StatusCode, "code": mapped.Code,
 			"body": logx.SummarizeUpstreamError(string(bodyBytes), 500),
 		})
-		return nil, &RequestError{Status: mapped.Status, Body: errBodyToPayload(mapped)}
+		return nil, &RequestError{
+			Status:         mapped.Status,
+			Body:           errBodyToPayload(mapped),
+			UpstreamStatus: mapped.ReportedStatus,
+			UpstreamCode:   mapped.Code,
+			RetryAfter:     mapped.Body.RetryAfter,
+		}
 	}
 	return resp, nil
 }
@@ -144,8 +231,8 @@ func (d *Deps) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeErrJSON(w, rerr.Status, rerr.Body)
 		return
 	}
-	apiKey := ExtractAPIKey(r.Header)
-	if apiKey == "" {
+	apiKey, authed := d.downstreamKey(r)
+	if !authed {
 		writeErrJSON(w, 401, errPayload("Missing API key. Send in Authorization: Bearer <key> or x-api-key header", "auth_error"))
 		return
 	}
@@ -179,6 +266,26 @@ func (d *Deps) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		d.nonStreamChat(w, r, resp, model, completionID, created, start)
 	}
+}
+
+// usageContext carries pool attribution for usage recording.
+func usageFrom(ctx context.Context) *pool.Resolved {
+	if dec := decisionFrom(ctx); dec != nil {
+		return dec.resolved
+	}
+	return nil
+}
+
+// downstreamKey resolves the effective credential for the handler-level
+// auth check. Pool-mode requests were already authenticated by PoolGate —
+// their upstream key is substituted in forwardOnce, so no user_ key is
+// required here.
+func (d *Deps) downstreamKey(r *http.Request) (apiKey string, ok bool) {
+	if dec := decisionFrom(r.Context()); dec != nil && dec.resolved.Gateway != nil {
+		return "", true
+	}
+	key := ExtractAPIKey(r.Header)
+	return key, key != ""
 }
 
 func (d *Deps) streamChat(w http.ResponseWriter, r *http.Request, resp *http.Response, model, completionID string, created int64, start time.Time) {
@@ -253,6 +360,10 @@ func (d *Deps) streamChat(w http.ResponseWriter, r *http.Request, resp *http.Res
 		return
 	}
 	resetTimeouts()
+	defer func() {
+		d.recordUsage(usageFrom(r.Context()), upstreamKeyID(r.Context()), model, "/v1/chat/completions",
+			200, tr.InputTokens, tr.OutputTokens, tr.CachedInputTokens, time.Since(start).Milliseconds())
+	}()
 
 	// Terminal precedence (port of the reference's order): upstream error →
 	// incomplete (no finish / connection failure) → zero-output → success.
@@ -330,6 +441,15 @@ func (d *Deps) nonStreamChat(w http.ResponseWriter, r *http.Request, resp *http.
 		}
 	}
 	resetTimeouts()
+	pTokens, cTokens, cachedTokens := int64(0), int64(0), int64(0)
+	if agg.Usage != nil {
+		cc.NormalizeUsage(agg.Usage)
+		pTokens, cTokens, cachedTokens = agg.Usage.InputTokens, agg.Usage.OutputTokens, agg.Usage.CachedInputTokens
+	}
+	defer func() {
+		d.recordUsage(usageFrom(r.Context()), upstreamKeyID(r.Context()), model, "/v1/chat/completions",
+			200, pTokens, cTokens, cachedTokens, time.Since(start).Milliseconds())
+	}()
 
 	if agg.UpstreamError != nil {
 		writeErrJSON(w, agg.UpstreamError.Status, errBodyToPayload(agg.UpstreamError))

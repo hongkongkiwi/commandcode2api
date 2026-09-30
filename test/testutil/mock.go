@@ -107,6 +107,11 @@ type Proxy struct {
 	mock   *MockCC
 }
 
+// NewProxy builds a Proxy over an existing base URL (custom harnesses).
+func NewProxy(base string) *Proxy {
+	return &Proxy{Base: base, client: &http.Client{Timeout: 60 * time.Second}}
+}
+
 // Setup wires proxy→mock and returns both. Config defaults apply
 // (30s/90s idle timeouts; tests that exercise timeouts pass
 // config overrides via env before calling — see SetEnvDefaults).

@@ -18,8 +18,8 @@ func (d *Deps) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		writeAnthropicError(w, rerr.Status, "invalid_request_error", firstString(rerr.Body), 0)
 		return
 	}
-	apiKey := ExtractAPIKey(r.Header)
-	if apiKey == "" {
+	apiKey, authed := d.downstreamKey(r)
+	if !authed {
 		writeErrJSON(w, 401, map[string]any{
 			"type":  "error",
 			"error": map[string]any{"type": "authentication_error", "message": "Missing API key. Send in Authorization: Bearer <key> or x-api-key header"},
@@ -148,6 +148,10 @@ func (d *Deps) streamMessages(w http.ResponseWriter, r *http.Request, resp *http
 		return
 	}
 	resetTimeouts()
+	defer func() {
+		d.recordUsage(usageFrom(r.Context()), upstreamKeyID(r.Context()), model, "/v1/messages",
+			200, tr.InputTokens, tr.OutputTokens, tr.CachedInputTokens, time.Since(start).Milliseconds())
+	}()
 
 	if tr.UpstreamError != nil {
 		if !started {
@@ -230,6 +234,15 @@ func (d *Deps) nonStreamMessages(w http.ResponseWriter, r *http.Request, resp *h
 		}
 	}
 	resetTimeouts()
+	pTokens, cTokens, cachedTokens := int64(0), int64(0), int64(0)
+	if usage != nil {
+		cc.NormalizeUsage(usage)
+		pTokens, cTokens, cachedTokens = usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens
+	}
+	defer func() {
+		d.recordUsage(usageFrom(r.Context()), upstreamKeyID(r.Context()), model, "/v1/messages",
+			200, pTokens, cTokens, cachedTokens, time.Since(start).Milliseconds())
+	}()
 
 	if upstreamError != nil {
 		writeAnthropicError(w, upstreamError.Status, upstreamError.Body.Error.Type, upstreamError.Body.Error.Message, 0)
