@@ -44,6 +44,19 @@ Docker:
 docker compose up -d            # listens on http://0.0.0.0:3050
 ```
 
+macOS launchd (auto-start at login, keep-alive):
+
+```bash
+CGO_ENABLED=0 go build -trimpath -o ~/.local/bin/commandcode2api .
+mkdir -p ~/.commandcode2api/data ~/.commandcode2api/logs
+cp config.json ~/.commandcode2api/config.json   # set host to 127.0.0.1 for local use
+# optional pool secrets in ~/.commandcode2api/.secrets.env:
+#   export CC_VAULT_SECRET=... CC_ADMIN_TOKEN=...
+# wrapper: ~/.commandcode2api/run.sh execs the binary with -config/-state-dir
+# agent:   ~/Library/LaunchAgents/com.hongkongkiwi.commandcode2api.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.hongkongkiwi.commandcode2api.plist
+```
+
 ## Endpoints
 
 | Endpoint | Protocol | Notes |
